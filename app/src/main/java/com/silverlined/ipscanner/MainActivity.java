@@ -7,15 +7,15 @@ import com.silverlined.ipscanner.TCP.IP_Finder;
 
 public class MainActivity extends AppCompatActivity {
 
-    public TextView txt_ips;
-    IP_Finder IPFinder;
+    private TextView txt_ips;
+    private IP_Finder IPFinder;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         txt_ips = findViewById(R.id.txt_ips);
-        IPFinder = new IP_Finder(this);
+        IPFinder = new IP_Finder(txt_ips);
         IPFinder.execute();
     }
 

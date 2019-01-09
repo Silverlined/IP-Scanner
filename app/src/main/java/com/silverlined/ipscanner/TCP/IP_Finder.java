@@ -1,65 +1,103 @@
 package com.silverlined.ipscanner.TCP;
 
 import android.os.AsyncTask;
-
-import com.silverlined.ipscanner.MainActivity;
+import android.util.Log;
+import android.widget.TextView;
 
 import java.lang.ref.WeakReference;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.SocketException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
-public class IP_Finder extends AsyncTask<Void, Void, String> {
-    private static final String INITIAL_IP_ADDRESS = "192.168.178.1";
+public class IP_Finder extends AsyncTask<Void, Void, List> {
     private static final int SERVER_PORT = 5045;
-    private WeakReference<MainActivity> activityWeakReference;
-    private List<Future<String>> futureList;
+    private String mPhoneIpAddress;
+    private WeakReference<TextView> textViewWeakReference;
+    private List<Future<String>> mFutureList;
 
-    public IP_Finder(MainActivity activity) {
-        activityWeakReference = new WeakReference<>(activity);
-        futureList = new ArrayList<>();
+    public IP_Finder(TextView view) {
+        textViewWeakReference = new WeakReference<>(view);
+        mFutureList = new ArrayList<>();
     }
 
     @Override
-    protected String doInBackground(Void... voids) {
+    protected List doInBackground(Void... voids) {
         ExecutorService executorService = Executors.newCachedThreadPool();
-        String resultIp = null;
-        String mIpAddress = INITIAL_IP_ADDRESS;
-        int mPort = SERVER_PORT;
+        mPhoneIpAddress = getIPAddress();
+        String mIpAddress = mPhoneIpAddress.substring(0, mPhoneIpAddress.lastIndexOf('.') + 1);
+        Log.e("TAG", mIpAddress);
         for (int i = 1; i < 255; i++) {
-            ConnectTask connectTask = new ConnectTask(mIpAddress, mPort);
+            String testIp = mIpAddress + String.valueOf(i);
+            ConnectTask connectTask = new ConnectTask(testIp, SERVER_PORT);
             Future<String> future = executorService.submit(new TaskManager(100, TimeUnit.MILLISECONDS, connectTask));
-            futureList.add(future);
-            mIpAddress = mIpAddress.substring(0, 12) + String.valueOf(i);
+            mFutureList.add(future);
         }
 
-        for (Future<String> connection : futureList) {
+        List<String> listOfDevices = new ArrayList<>();
+        String resultIp = null;
+        for (Future<String> connection : mFutureList) {
             try {
                 resultIp = connection.get();
                 if (resultIp != null) {
-                    return resultIp;
+                    if (resultIp.charAt(0) == 'r') {
+                        resultIp = resultIp.substring(1, resultIp.length());
+                    }
+                    listOfDevices.add(resultIp);
                 }
             } catch (InterruptedException | ExecutionException e) {
                 e.printStackTrace();
             }
         }
-        return null;
+        return listOfDevices;
     }
 
     @Override
-    protected void onPostExecute(String ip) {
-        super.onPostExecute(ip);
-        MainActivity activity = activityWeakReference.get();
-        if(activity == null || activity.isFinishing()) {
+    protected void onPostExecute(List listOfDevices) {
+        super.onPostExecute(listOfDevices);
+        TextView activity = textViewWeakReference.get();
+        if (activity == null) {
             return;
         }
-        if (ip != null) {
-            activity.txt_ips.setText(ip);
+        if (!listOfDevices.isEmpty()) {
+            activity.setText(Arrays.toString(listOfDevices.toArray()));
+        } else activity.setText("404 Not Found");
+    }
+
+    private String getIPAddress() {
+        List<NetworkInterface> interfaces = null;
+        String ip;
+        try {
+            interfaces = Collections.list(NetworkInterface.getNetworkInterfaces());
+        } catch (SocketException e) {
+            e.printStackTrace();
         }
-        else activity.txt_ips.setText("404 Not Found");
+        for (NetworkInterface networkInterface : interfaces) {
+            List<InetAddress> inetAddressList = Collections.list(networkInterface.getInetAddresses());
+            for (InetAddress address : inetAddressList) {
+                if (!address.isLoopbackAddress()) {
+                    ip = address.getHostName();
+                    if (isIPv4(ip)) {
+                        return ip;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean isIPv4(final String address) {
+        Pattern regexPattern = Pattern.compile("^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}" +
+                "(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$");
+        return Pattern.matches(String.valueOf(regexPattern), address);
     }
 }
