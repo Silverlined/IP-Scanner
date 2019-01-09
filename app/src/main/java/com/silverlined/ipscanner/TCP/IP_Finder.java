@@ -4,12 +4,12 @@ import android.os.AsyncTask;
 import android.util.Log;
 import android.widget.TextView;
 
-import java.lang.ref.WeakReference;
+import com.silverlined.ipscanner.adapters.IpAdapter;
+
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -19,58 +19,53 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
-public class IP_Finder extends AsyncTask<Void, Void, List> {
+public class IP_Finder extends AsyncTask<Void, Void, Void> {
     private static final int SERVER_PORT = 5045;
-    private String mPhoneIpAddress;
-    private WeakReference<TextView> textViewWeakReference;
+    private List<String> listOfDevices;
     private List<Future<String>> mFutureList;
+    private IpAdapter adapter;
 
-    public IP_Finder(TextView view) {
-        textViewWeakReference = new WeakReference<>(view);
+    public IP_Finder(IpAdapter adapter, List<String> listOfDevices) {
+        this.adapter = adapter;
+        this.listOfDevices = listOfDevices;
         mFutureList = new ArrayList<>();
     }
 
     @Override
-    protected List doInBackground(Void... voids) {
+    protected Void doInBackground(Void... voids) {
         ExecutorService executorService = Executors.newCachedThreadPool();
-        mPhoneIpAddress = getIPAddress();
-        String mIpAddress = mPhoneIpAddress.substring(0, mPhoneIpAddress.lastIndexOf('.') + 1);
-        Log.e("TAG", mIpAddress);
-        for (int i = 1; i < 255; i++) {
-            String testIp = mIpAddress + String.valueOf(i);
-            ConnectTask connectTask = new ConnectTask(testIp, SERVER_PORT);
-            Future<String> future = executorService.submit(new TaskManager(100, TimeUnit.MILLISECONDS, connectTask));
-            mFutureList.add(future);
-        }
-
-        List<String> listOfDevices = new ArrayList<>();
-        String resultIp = null;
-        for (Future<String> connection : mFutureList) {
-            try {
-                resultIp = connection.get();
-                if (resultIp != null) {
-                    if (resultIp.charAt(0) == 'r') {
-                        resultIp = resultIp.substring(1, resultIp.length());
+        String mPhoneIpAddress = getIPAddress();
+        if (mPhoneIpAddress != null) {
+            String mIpAddress = mPhoneIpAddress.substring(0, mPhoneIpAddress.lastIndexOf('.') + 1);
+            Log.e("TAG", mIpAddress);
+            for (int i = 1; i < 255; i++) {
+                String testIp = mIpAddress + String.valueOf(i);
+                ConnectTask connectTask = new ConnectTask(testIp, SERVER_PORT);
+                Future<String> future = executorService.submit(new TaskManager(100, TimeUnit.MILLISECONDS, connectTask));
+                mFutureList.add(future);
+            }
+            String resultIp = null;
+            for (Future<String> connection : mFutureList) {
+                try {
+                    resultIp = connection.get();
+                    if (resultIp != null) {
+                        if (resultIp.charAt(0) == 'r') {
+                            resultIp = resultIp.substring(1, resultIp.length());
+                        }
+                        listOfDevices.add(resultIp);
                     }
-                    listOfDevices.add(resultIp);
+                } catch (InterruptedException | ExecutionException e) {
+                    e.printStackTrace();
                 }
-            } catch (InterruptedException | ExecutionException e) {
-                e.printStackTrace();
             }
         }
-        return listOfDevices;
+        return null;
     }
 
     @Override
-    protected void onPostExecute(List listOfDevices) {
-        super.onPostExecute(listOfDevices);
-        TextView activity = textViewWeakReference.get();
-        if (activity == null) {
-            return;
-        }
-        if (!listOfDevices.isEmpty()) {
-            activity.setText(Arrays.toString(listOfDevices.toArray()));
-        } else activity.setText("404 Not Found");
+    protected void onPostExecute(Void aVoid) {
+        super.onPostExecute(aVoid);
+        adapter.notifyDataSetChanged();
     }
 
     private String getIPAddress() {
@@ -81,6 +76,7 @@ public class IP_Finder extends AsyncTask<Void, Void, List> {
         } catch (SocketException e) {
             e.printStackTrace();
         }
+        assert interfaces != null;
         for (NetworkInterface networkInterface : interfaces) {
             List<InetAddress> inetAddressList = Collections.list(networkInterface.getInetAddresses());
             for (InetAddress address : inetAddressList) {
